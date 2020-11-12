@@ -5,20 +5,20 @@ with open( 'README.rst', 'r' ) as f:
 
 classifiers = [
 	"Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
 ]
 
 project_urls = {
 	'Documentation': 	'https://thot-data-docs.readthedocs.io/',
-	'Source Code': 		'https://github.com/bicarlsen/thot-data',
-	'Bug Tracker':		'https://github.com/bicarlsen/thot-data/issues'
+	'Source Code': 		'https://github.com/bicarlsen/thot-core',
+	'Bug Tracker':		'https://github.com/bicarlsen/thot-core/issues'
 }
 
 
 setuptools.setup(
-	name='thot-data',
-	version = '0.2.3',
+	name='thot-core',
+	version = '0.2.4',
 	author='Brian Carlsen',
 	author_email = 'carlsen.bri@gmail.com',
 	description = 'Thot data analysis and management.',
@@ -29,10 +29,7 @@ setuptools.setup(
 	project_urls = project_urls,
 	classifiers = classifiers,
 	
-	install_requires = [
-		# TODO [2]: Not needed for local projects. Remove dependency files in thot > db/mongo 
-		'pymongo' 
-	],
+	install_requires = [],
 
 	package_data = {
 	},

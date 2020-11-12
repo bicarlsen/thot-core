@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# # Database Interface
+# # Collection Interface
 
 # In[1]:
 
@@ -12,7 +12,30 @@ from abc import ABC, abstractmethod
 # In[ ]:
 
 
-class DatabaseInterface( ABC ):
+class CollectionInterface( ABC ):
+    """
+    Interface of required methods for a Collection.
+    """
+    
+    
+    @abstractmethod
+    def find( self, search ):
+        """
+        Finds an object.
+        
+        :param search: Dictionary to filter objects.
+        """
+        pass
+    
+    
+    @abstractmethod
+    def find_one( self, search ):
+        """
+        Finds an object.
+        
+        :param search: Dictionary to filter objects.
+        """
+        pass
     
     @abstractmethod
     def insert_one( self, obj ):
@@ -81,26 +104,6 @@ class DatabaseInterface( ABC ):
     def delete_many( self, search, update ):
         """
         Delete multiple objects.
-        
-        :param search: Dictionary to filter objects.
-        """
-        pass
-    
-    
-    @abstractmethod
-    def find( self, search ):
-        """
-        Finds an object.
-        
-        :param search: Dictionary to filter objects.
-        """
-        pass
-    
-    
-    @abstractmethod
-    def find_one( self, search ):
-        """
-        Finds an object.
         
         :param search: Dictionary to filter objects.
         """
