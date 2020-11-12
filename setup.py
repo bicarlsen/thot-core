@@ -18,7 +18,7 @@ project_urls = {
 
 setuptools.setup(
 	name='thot-core',
-	version = '0.2.4',
+	version = '0.3.0',
 	author='Brian Carlsen',
 	author_email = 'carlsen.bri@gmail.com',
 	description = 'Thot data analysis and management.',
@@ -31,8 +31,7 @@ setuptools.setup(
 	
 	install_requires = [],
 
-	package_data = {
-	},
+	package_data = {},
 
 	entry_points = {
 		'console_scripts': []
