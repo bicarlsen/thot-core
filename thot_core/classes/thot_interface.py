@@ -96,4 +96,14 @@ class ThotInterface( ABC ):
         :param asset: Asset to create.
         """
         pass
+    
+    
+    @staticmethod
+    def dev_mode():
+        """
+        Whether the script is being run in development mode or not.
+        
+        :returns: False if being run from the runner, True otherwise.
+        """
+        return False
 
