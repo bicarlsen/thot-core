@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import signal
-import platform
+# import platform
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
@@ -108,7 +108,8 @@ class Runner:
             return subprocess.check_output(
                 f'python { script_path }',
                 shell = True,
-                env = env
+                env = env,
+                stderr = subprocess.STDOUT
             )
         
         except subprocess.CalledProcessError as err:
