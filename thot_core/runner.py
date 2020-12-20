@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # # Runner Core
@@ -9,10 +9,26 @@
 import os
 import sys
 import json
+import signal
+import platform
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 from .classes.container import Container
+
+
+# In[ ]:
+
+
+def escape_path( path ):
+    return f'"{ path }"'
+#     system = platform.system()
+    
+#     if system == 'Windows':
+#         return f'"{ path }"'
+    
+#     else:
+#         return path.replace( ' ', '\ ' )
 
 
 # In[ ]:
@@ -87,9 +103,10 @@ class Runner:
 
         # TODO [0]: Ensure safely run
         # run program
+        script_path = escape_path( script_path )
         try:
             return subprocess.check_output(
-                'python {}'.format( script_path ),
+                f'python { script_path }',
                 shell = True,
                 env = env
             )
@@ -106,6 +123,7 @@ class Runner:
         scripts = None,
         ignore_errors = False, 
         multithread = False, 
+        multiprocess = False,
         verbose = False,
     ):
         """
@@ -119,8 +137,13 @@ class Runner:
             True to use default number of threads, or an integer 
             to specify how many threads to use. 
             If interpreted as boolean is False, will use a single thread.
+            Should be used for IO bound evaluations.
             CAUTION: May decrease runtime, but also locks system and can not kill.
             [Default: False] [Default Threads: 5]
+        :param multiprocess: Evaluate tree using multiple processes.
+            Should be used for CPU bound evaluations.
+            NOT YET IMPLEMENTED
+            [Default: False]
         :param verbose: Print evaluation information. [Default: False]
         """
         self._check_hooks()
@@ -209,10 +232,10 @@ class Runner:
         :throws: Error if registered hook is invalid.
         """
         if not self.hooks[ 'get_container' ]:
-            raise Error( 'Required hook get_container is not set.' )
+            raise RuntimeError( 'Required hook get_container is not set.' )
         
         if not self.hooks[ 'get_script_info' ]:
-            raise Error( 'Required hook get_script_info is not set.' )
+            raise RuntimeError( 'Required hook get_script_info is not set.' )
     
     
     @staticmethod

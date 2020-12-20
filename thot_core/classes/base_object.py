@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # # Base Object
@@ -31,7 +31,7 @@ class BaseObject( Mapping ):
         for prop in self._properties:
             val = properties[ prop ]
             
-            if ( prop is 'metadata' ) and isinstance( val, list ):
+            if ( prop == 'metadata' ) and isinstance( val, list ):
                 md = {}
                 
                 # convert metadata list to dictionary
@@ -39,7 +39,7 @@ class BaseObject( Mapping ):
                     md_val = datum[ 'value' ]
                     
                     # cast value to correct type, comes as string
-                    if datum[ 'type' ] is 'number':
+                    if datum[ 'type' ] == 'number':
                         try:
                             # check if int
                             md_val = int( md_val )
@@ -48,7 +48,7 @@ class BaseObject( Mapping ):
                             # try as float
                             md_val = float( md_val )
                         
-                    elif datum[ 'type' ] is 'json':
+                    elif datum[ 'type' ] == 'json':
                         md_val = json.loads( md_val )
         
                     md[ datum[ 'name' ] ] = md_val
@@ -67,7 +67,7 @@ class BaseObject( Mapping ):
     
     
     def __getitem__( self, item ):
-        if item is '_properties':
+        if item == '_properties':
             raise KeyError( item )
         
         return getattr( self, item )
@@ -104,8 +104,7 @@ class BaseObjectJSONEncoder( json.JSONEncoder ):
             return obj.__json__()
         
         else:
-            # raise TypeError( 'Object {} is not a BaseObject.'.format( obj ) )
-            super().default( obj )
+            super().default()
 
 
 # # Work
