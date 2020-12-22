@@ -42,6 +42,12 @@ class Runner:
         
         + script_error: Runs when a Script creates an error.
             [Signature: ( error, script_id, root, ignore_errors ) => ()]
+            :param err: The raise error. 
+                err.cmd contains Container and Script info.
+                err.output contains the traceback.
+            :param script_id: Id of the Script. [Default: None]
+            :param root: Container of error. [Default: None]
+            :param ignore_errors: Whether to ignore errors. [Default: False]
             
         + assets_added: Run after a Script analysis is complete, passed ids of the added Assets.
             [Signature: ( added_assets ) => ()]
@@ -105,7 +111,7 @@ class Runner:
             )
         
         except subprocess.CalledProcessError as err:
-            err.cmd = '[{}] '.format( container_id ) + err.cmd
+            err.cmd = f'[{ container_id }] { err.cmd }'
             raise err
     
     
@@ -232,14 +238,25 @@ class Runner:
     
     
     @staticmethod
-    def _default_script_error_handler( err, script_id, root, ignore_errors = False ):
+    def _default_script_error_handler( 
+        err, 
+        script_id = None, 
+        root = None, 
+        ignore_errors = False
+    ):
         """
-        
+        :param err: The raise error. 
+            err.cmd contains Container and Script info.
+            err.output contains the traceback.
+        :param script_id: Id of the Script. [Default: None]
+        :param root: Container of error. [Default: None]
+        :param ignore_errors: Whether to ignore errors. [Default: False]
         """
         if ignore_errors:
             # TODO [2]: Only return errors after final exit.
             # collect errors for output at end
-            print( '[{}] {}'.format( root._id, err ) )
+            msg = f'{ err.cmd }\n{ err.output.decode() }\n'
+            print( msg )
 
         else:
             raise err
