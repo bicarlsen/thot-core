@@ -252,13 +252,14 @@ class Runner:
         :param root: Container of error. [Default: None]
         :param ignore_errors: Whether to ignore errors. [Default: False]
         """
+        msg = f'{ err.cmd }\n{ err.output.decode() }\n'
         if ignore_errors:
             # TODO [2]: Only return errors after final exit.
             # collect errors for output at end
-            msg = f'{ err.cmd }\n{ err.output.decode() }\n'
             print( msg )
 
         else:
+            err.cmd = msg
             raise err
 
 
