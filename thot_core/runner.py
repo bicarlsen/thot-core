@@ -22,13 +22,6 @@ from .classes.container import Container
 
 def escape_path( path ):
     return f'"{ path }"'
-#     system = platform.system()
-    
-#     if system == 'Windows':
-#         return f'"{ path }"'
-    
-#     else:
-#         return path.replace( ' ', '\ ' )
 
 
 # In[ ]:
@@ -41,7 +34,6 @@ class Runner:
     Hooks are:
         + get_container: Method to retrieve the Container being run. 
             Provided the root id, should return the Container.
-            [Siganture: ( root ) => ( Container )]
             [Required]
             
         + get_script_info: Method to retrieve require information about the Script being run.
@@ -49,7 +41,7 @@ class Runner:
             [Required]
         
         + script_error: Runs when a Script creates an error.
-            [Signature: ( error, ignore_errors ) => ()]
+            [Signature: ( error, script_id, root, ignore_errors ) => ()]
             
         + assets_added: Run after a Script analysis is complete, passed ids of the added Assets.
             [Signature: ( added_assets ) => ()]
@@ -210,7 +202,7 @@ class Runner:
                 ) 
 
             except Exception as err:
-                self.hooks[ 'script_error' ]( err, ignore_errors )
+                self.hooks[ 'script_error' ]( err, script_id, root, ignore_errors )
 
             if self.hooks[ 'assets_added' ]:
                 script_assets = [ 
@@ -240,7 +232,7 @@ class Runner:
     
     
     @staticmethod
-    def _default_script_error_handler( err, ignore_errors = False ):
+    def _default_script_error_handler( err, script_id, root, ignore_errors = False ):
         """
         
         """
