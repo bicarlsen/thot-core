@@ -9,10 +9,13 @@
 import os
 import sys
 import json
+import queue
 import signal
-# import platform
+import asyncio
+import logging
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
+from time import perf_counter
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait
 
 from .classes.container import Container
 
@@ -121,9 +124,10 @@ class Runner:
         root, 
         scripts = None,
         ignore_errors = False, 
-        multithread = False, 
-        multiprocess = False,
-        verbose = False,
+        multithread   = False,
+        asynchronous  = False,
+        multiprocess  = False,
+        verbose       = False
     ):
         """
         Runs scripts on the Container tree.
@@ -139,11 +143,14 @@ class Runner:
             Should be used for IO bound evaluations.
             CAUTION: May decrease runtime, but also locks system and can not kill.
             [Default: False] [Default Threads: 5]
+        :param asynchronous: Evaluate tree asynchronously. [Default: False]
         :param multiprocess: Evaluate tree using multiple processes.
             Should be used for CPU bound evaluations.
             NOT YET IMPLEMENTED
             [Default: False]
-        :param verbose: Print evaluation information. [Default: False]
+        :param verbose: Log evaluation information. [Default: False]
+        :raises RuntimeError: If more than one of 
+            multithread, asynchronous, or multiprocess evaluates to True.
         """
         self._check_hooks()
         
@@ -152,6 +159,9 @@ class Runner:
             root = Container( **root )
 
         # eval children
+        if verbose:
+            subtree_start = perf_counter()
+            
         kwargs = {
             'scripts': scripts,
             'ignore_errors': ignore_errors,
@@ -159,28 +169,103 @@ class Runner:
             'verbose': verbose
         }
         
-        if multithread:
-            max_workers = (
-                5 # default
-                if multithread is True else
-                multithread
-            )
-            
-            with ThreadPoolExecutor( max_workers = max_workers ) as executer:
-                # only enable threading at top level
-                kwargs[ 'multithread' ] = False
+        # check eval specifications
+        if sum( map( bool, [ multithread, asynchronous, multiprocess ] ) ) > 1:
+            raise RuntimeError( 'Invalid evaluation specification. Only one of multithread, asynchronous, or multiprocess can evaluate to True.' )
+        
+        if asynchronous:
+            raise NotImplementedError( 'Asynchronous evaluation is not yet implemented.' )
+        
+        elif multithread is not False:
+            executor_creator = False
+            if not isinstance( multithread, ThreadPoolExecutor ):
+                def _kill_threads( executor ):
+                    print( '\nWrapping up, please wait...' )
+
+                    py_version = sys.version_info
+                    if ( 
+                        ( py_version.major < 3 ) or 
+                        ( ( py_version.major == 3 ) and ( py_version.minor < 9 ) )
+                    ):
+                        # py versions less than 3.9
+                        # Executor#shutdown does not accept
+                        # cancel_futures keyword
+                        # manually shutdown
+                        
+                        executor.shutdown( wait = False )
+                        while True:
+                            try:
+                                work_item = executor._work_queue.get_nowait()
+                                
+                            except queue.Empty:
+                                break
+                                
+                            if work_item is not None:
+                                work_item.future.cancel()
+
+                    else:
+                        executor.shutdown( cancel_futures = True )
+                    
+                    sys.exit( 0 )
                 
-                executer.map( 
-                    lambda child: self.eval_tree( child, **kwargs ), 
-                    root.children 
+                # create thread pool if needed
+                max_workers = (
+                    5 # default
+                    if multithread is True else
+                    multithread
                 )
 
+                multithread = ThreadPoolExecutor( max_workers = max_workers )
+                kwargs[ 'multithread' ] = multithread
+                executor_creator = True
+                
+                signal.signal( 
+                    signal.SIGINT, 
+                    lambda sig, frame: _kill_threads( multithread ) 
+                )
+            
+            # can not use executor#map because child ownership seems to get messed up
+            futures = list( map(
+                lambda child: multithread.submit( self.eval_tree, child, **kwargs ),
+                root.children
+            ) )
+
+            ( done, not_done ) = wait( futures )
+
+
+            if executor_creator:
+                multithread.shutdown()
+                
+        elif multiprocess is not False:
+            raise NotImplementedError( 'Multiprocess evaluation is not yet implemented.' )
+            
+            executor_creator = False
+            if not isinstance( multiprocess, ProcessPoolExecutor ):
+                # create thread pool if needed
+                max_workers = (
+                    5 # default
+                    if multiprocess is True else
+                    multiprocess
+                )
+
+                multiprocess = ProcessPoolExecutor( max_workers = max_workers )
+                kwargs[ 'multiprocess' ] = multiprocess
+                executor_creator = True
+                
+            multiprocess.map( 
+                lambda child: self.eval_tree( child, **kwargs ), 
+                root.children 
+            )
+
+            if executor_creator:
+                multiprocess.shutdown()      
+        
         else:
             for child in root.children:
                 # recurse
                 self.eval_tree( child, **kwargs )
-
-        # TODO [1]: Check filtering works for local projects.
+                
+        # TODO [1]: Check filtering works.
         # filter scripts to run
         root.scripts.sort()
         run_scripts = (
@@ -190,6 +275,8 @@ class Runner:
         )
 
         # eval self
+        # TODO [0]: Group scripts by priority.
+        #     Run scripts within each group asynchronously, or with multiprocessing.
         added_assets = []
         for association in run_scripts:
             if not association.autorun:
@@ -198,14 +285,21 @@ class Runner:
             ( script_id, script_path ) = self.hooks[ 'get_script_info' ]( association.script )
 
             if verbose:
-                print( 'Running script {} on container {}'.format( script_id, root._id )  )
+                logging.info( 'Running script {} on container {}'.format( script_id, root._id )  )
 
             try:
+                if verbose:
+                    eval_start = perf_counter()
+        
                 script_assets = self.run_script( 
                     str( script_id ), # convert ids if necessary
                     script_path, 
                     str( root._id ) 
                 ) 
+            
+                if verbose:
+                    logging.info( f'[Container { root._id } | Script { script_id } ] { perf_counter() - eval_start } s' )
+       
 
             except Exception as err:
                 self.hooks[ 'script_error' ]( err, script_id, root, ignore_errors )
@@ -219,9 +313,11 @@ class Runner:
 
                 self.hooks[ 'assets_added' ]( script_assets )
 
-
         if self.hooks[ 'complete' ]:
             self.hooks[ 'complete' ]()
+            
+        if verbose:
+            logging.info( f'[Container { root._id }] { perf_counter() - subtree_start } s' )
             
             
     def _check_hooks( self ):
