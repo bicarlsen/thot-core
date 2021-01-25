@@ -74,6 +74,7 @@ class Runner:
         }
         
         self._procs = {}
+        self._semaphore = None
         self._exit_task = None
         
     
@@ -92,10 +93,34 @@ class Runner:
         self.hooks[ hook ] = method
     
     
+    @property
+    def semaphore( self ):
+        """
+        :returns: Semaphore.
+        """
+        return self._semaphore
+    
+    
+    def set_semaphore( self, value ):
+        """
+        Sets the semaphore to use.
+            
+        :param value: Semaphore's value.
+        :raises RuntimeError: If semaphore is already set.
+        :raises TypeError: If semaphore is invalid.
+        """
+        
+        if self._semaphore is not None:
+            raise RuntimeError( 'Semaphore already set.' )
+        
+        self._semaphore = asyncio.Semaphore( value )
+
+    
     # TODO [2]: Allow running between certain depths.
     async def eval_tree( 
         self,
-        root, 
+        root,
+        tasks = None,
         **eval_args
     ):
         """
@@ -103,19 +128,47 @@ class Runner:
         Uses DFS, running from bottom up.
 
         :param root: Container or id.
+        :param tasks: Maximum number of tasks.
+            If None, no limit. [Default: None]
         :param **eval_args: Arguments passed to #eval_container.
         :raises RuntimeError: If more than one of 
             multithread, asynchronous, or multiprocess evaluates to True.
         """
+        # signal handlers
         self._check_hooks()
         if threading.current_thread() is threading.main_thread():
             self._register_signal_handlers()
-        
+            
+        # verbose
         verbose = self.get_kwarg( 'verbose', eval_args, False )
         if verbose:
             logger = logging.getLogger( __name__ )
             subtree_start = perf_counter()
+            
+        # tasks
+        # task validity
+        if (
+            isinstance( tasks, bool ) or
+            not (
+                ( tasks is None ) or
+                isinstance( tasks, int )
+            )
+        ):
+            raise TypeError( 'Parameter tasks must be None or an integer.' )
+            
+        if ( 
+            isinstance( tasks, int ) and
+            tasks < 1 
+        ):
+            raise ValueError( 'Must allow at least one task, provided in tasks parameter.' )
         
+        semaphore_creator = False
+        if ( tasks is not None ) and ( self.semaphore is None ):
+            # create semaphore
+            self.set_semaphore( tasks )
+            semaphore_creator = True
+        
+        # get root
         root = self.hooks[ 'get_container' ]( root )
         if not isinstance( root, Container ):
             root = Container( **root )
@@ -123,10 +176,13 @@ class Runner:
         # evaluate children
         children = []
         for child in root.children:
-            children.append( self.eval_tree( 
+            child_task = self.eval_tree( 
                 child,
+                tasks = tasks,
                 **eval_args
-            ) )
+            )
+            
+            children.append( child_task )
         
         try:
             await asyncio.gather( *children )
@@ -140,6 +196,10 @@ class Runner:
         if self.hooks[ 'complete' ]:
             self.hooks[ 'complete' ]()
             
+        if semaphore_creator:
+            # destroy semaphore
+            self._semaphore = None
+            
         if verbose:
             logger.info( f'[Container { root._id }] { perf_counter() - subtree_start } s' )
     
@@ -147,6 +207,7 @@ class Runner:
     def eval_tree_sync(
         self,
         root,
+        tasks = None,
         **eval_args
     ):
         """
@@ -156,7 +217,7 @@ class Runner:
         
         See #eval_tree for description.
         """
-        asyncio.run( self.eval_tree( root, **eval_args ) )
+        asyncio.run( self.eval_tree( root, tasks = tasks, **eval_args ) )
             
             
     async def eval_container( 
@@ -225,37 +286,47 @@ class Runner:
             
             :param association: ScriptAssociation to run.
             """
+            async def _execute_script( script_id, script_path ):
+                if verbose:
+                    logger.info( f'Running script {script_id} on container {container._id}' )
+                    eval_start = perf_counter()
+        
+                try:
+                    script_assets = await self.run_script( 
+                        str( script_id ), # convert ids if necessary
+                        script_path,
+                        str( container._id )
+                    ) 
+
+                except subprocess.CalledProcessError as err:
+                    # check for keyboard interupt
+                    sigint_pattern = 'died with <Signals.SIGINT: 2>'
+                    if sigint_pattern in str( err ):
+                        raise asyncio.CancelledError
+
+                    # other error
+                    self.hooks[ 'script_error' ]( err, script_id, container, ignore_errors )
+
+                except asyncio.CancelledError as err:
+                    raise err
+                    
+                if verbose:
+                    logger.info( 
+                        f'[Container { container._id } | Script { script_id }] { perf_counter() - eval_start } s' 
+                    )
+            
+                return script_assets
+            
+            
             ( script_id, script_path ) = self.hooks[ 'get_script_info' ]( association.script )
 
-            if verbose:
-                logger.info( f'Running script {script_id} on container {container._id}' )
-
-            if verbose:
-                eval_start = perf_counter()
-        
-            try:
-                script_assets = await self.run_script( 
-                    str( script_id ), # convert ids if necessary
-                    script_path,
-                    str( container._id )
-                ) 
-            
-            except subprocess.CalledProcessError as err:
-                # check for keyboard interupt
-                sigint_pattern = 'died with <Signals.SIGINT: 2>'
-                if sigint_pattern in str( err ):
-                    raise asyncio.CancelledError
+            # execute script
+            if self.semaphore is None:
+                script_assets = await _execute_script( script_id, script_path )
                 
-                # other error
-                self.hooks[ 'script_error' ]( err, script_id, container, ignore_errors )
-                
-            except asyncio.CancelledError as err:
-                raise err
-            
-            if verbose:
-                logger.info( 
-                    f'[Container { container._id } | Script { script_id }] { perf_counter() - eval_start } s' 
-                )
+            else:
+                async with self.semaphore:
+                    script_assets = await _execute_script( script_id, script_path )
             
             if self.hooks[ 'assets_added' ]:
                 script_assets = [ 
@@ -423,7 +494,7 @@ class Runner:
                 sig,
                 partial( _exit, sig, loop )
             )
-    
+            
     
     @staticmethod
     def group_scripts( associations ):
